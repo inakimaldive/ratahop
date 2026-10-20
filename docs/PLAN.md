@@ -14,8 +14,9 @@ crate names verified as unclaimed on crates.io, integration guide
 changelog, and an MSRV CI job added.
 
 Remaining community-beta work: feedback from independently maintained projects,
-a second external integration, and release preparation. CI is configured for
-Linux, Windows, and macOS but has only been run locally on Linux. The optional
+a second external integration, and release preparation. The CI matrix (Linux,
+Windows, macOS) and the MSRV job have run successfully on GitHub-hosted
+runners. The optional
 hash-based duplicate-ID validation strategy stays deferred until integration
 feedback shows larger registries need it; any such strategy would require a
 stronger trait bound on target IDs (for example `Hash`), so it should not be

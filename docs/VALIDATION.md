@@ -86,3 +86,7 @@ work, as recorded in the development plan.
   with pyte and Pillow). Frames verified visually.
 - Integration guide added at [GUIDE.md](GUIDE.md); changelog at
   `CHANGELOG.md`. The second external integration remains open.
+- Repository published at https://github.com/inakimaldive/ratahop. The CI
+  workflow (Linux, Windows, macOS matrix plus the MSRV 1.88 job) ran
+  successfully on GitHub-hosted runners for the initial commit, closing the
+  "only run locally on Linux" gap for the toolchain matrix.
