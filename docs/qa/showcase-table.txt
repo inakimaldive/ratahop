@@ -1,0 +1,24 @@
+RataHop / table · f hints · j/k scroll · q quit
+
+┌100 rows · only visible rows get hints────────────────────────────────────────┐
+│dtem 001 · read details                                                       │
+│ftem 002 · read details                                                       │
+│gtem 003 · read details                                                       │
+│htem 004 · read details                                                       │
+│jtem 005 · read details                                                       │
+│ktem 006 · read details                                                       │
+│ltem 007 · read details                                                       │
+│aaem 008 · read details                                                       │
+│asem 009 · read details                                                       │
+│adem 010 · read details                                                       │
+│afem 011 · read details                                                       │
+│agem 012 · read details                                                       │
+│ahem 013 · read details                                                       │
+│ajem 014 · read details                                                       │
+│akem 015 · read details                                                       │
+│alem 016 · read details                                                       │
+│saem 017 · read details                                                       │
+│ssem 018 · read details                                                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+Type a visible hint to activate its control. PgUp/PgDn browse crowded pickers.
+

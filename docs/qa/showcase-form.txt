@@ -1,0 +1,24 @@
+RataHop / form · f hints · j/k scroll · q quit
+
+aame: Terminal reader [edit]
+
+
+save profile
+
+deset profile
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Type a visible hint to activate its control. PgUp/PgDn browse crowded pickers.
+

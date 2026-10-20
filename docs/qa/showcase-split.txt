@@ -1,0 +1,24 @@
+RataHop / split · f hints · j/k scroll · q quit
+
+dettings [edit name]    ┌100 rows · only visible rows get hints────────────────┐
+                        │ftem 001 · read details                               │
+                        │gtem 002 · read details                               │
+                        │htem 003 · read details                               │
+                        │jtem 004 · read details                               │
+                        │ktem 005 · read details                               │
+                        │ltem 006 · read details                               │
+                        │aaem 007 · read details                               │
+                        │asem 008 · read details                               │
+                        │adem 009 · read details                               │
+                        │afem 010 · read details                               │
+                        │agem 011 · read details                               │
+                        │ahem 012 · read details                               │
+                        │ajem 013 · read details                               │
+                        │akem 014 · read details                               │
+                        │alem 015 · read details                               │
+                        │saem 016 · read details                               │
+                        │ssem 017 · read details                               │
+                        │sdem 018 · read details                               │
+                        └──────────────────────────────────────────────────────┘
+Type a visible hint to activate its control. PgUp/PgDn browse crowded pickers.
+

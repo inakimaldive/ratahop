@@ -1,0 +1,10 @@
+[package]
+name = "ratahop"
+description = "RataHop: framework-independent keyboard hint navigation for terminal interfaces"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true

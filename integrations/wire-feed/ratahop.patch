@@ -1,0 +1,321 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -6,6 +6,7 @@
+ description = "A Twitter-inspired terminal news reader"
+ 
+ [dependencies]
++ratahop-ratatui = { path = "../ratahop/crates/ratahop-ratatui" }
+ ratatui = "0.30.2"
+ crossterm = "0.29"
+ image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -18,7 +18,7 @@
+     time::{Duration, Instant},
+ };
+ 
+-#[derive(Clone, PartialEq)]
++#[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum Page {
+     Home,
+     Explore,
+@@ -26,7 +26,7 @@
+     Bookmarks,
+     Profile,
+ }
+-#[derive(Clone)]
++#[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum Action {
+     Page(Page),
+     Tab(bool),
+@@ -58,6 +58,7 @@
+ }
+ 
+ pub struct App {
++    pub hints: ratahop_ratatui::Hop<Action>,
+     pub stories: Vec<Story>,
+     pub images: Vec<Option<image::DynamicImage>>,
+     pub saved: Saved,
+@@ -101,6 +102,7 @@
+         })
+         .collect();
+         Self {
++            hints: ratahop_ratatui::Hop::default(),
+             stories: model::samples(),
+             images,
+             saved,
+@@ -122,6 +124,7 @@
+         }
+     }
+     fn apply_feed(&mut self, loaded: live::Loaded) {
++        self.hints.cancel();
+         let selected_url = self.stories.get(self.selected).map(|s| s.url.clone());
+         let old_urls: Vec<_> = self.stories.iter().map(|s| s.url.clone()).collect();
+         let feed = loaded.feed;
+@@ -212,6 +215,7 @@
+         }
+     }
+     fn act(&mut self, action: Action) {
++        self.hints.cancel();
+         match action {
+             Action::Page(page) => {
+                 self.page = page;
+@@ -295,6 +299,27 @@
+     fn key(&mut self, key: KeyEvent) -> bool {
+         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+             return true;
++        }
++        if self.hints.is_active() {
++            let outcome = self.hints.handle_key(key);
++            if let ratahop_ratatui::Outcome::Selected(action) = &outcome {
++                // The current hit list is the latest completed layout snapshot.
++                if self.hits.iter().any(|(_, current)| current == action) {
++                    self.act(action.clone());
++                }
++            }
++            if outcome.consumed() {
++                return false;
++            }
++        }
++        let hint_shortcut = key.code == KeyCode::Char('f')
++            && (key.modifiers == KeyModifiers::ALT
++                || (key.modifiers.is_empty() && !self.searching && self.modal.is_none()));
++        if hint_shortcut {
++            if let Err(error) = self.hints.start() {
++                self.status = format!("Hints: {error}");
++            }
++            return false;
+         }
+         if self.searching {
+             match key.code {
+@@ -468,8 +493,9 @@
+                 while let Ok(update) = receiver.try_recv() {
+                     pending = Some(update);
+                 }
+-                // Keep indices stable while a story dialog is open.
++                // Keep story indices stable while a dialog or hint session is open.
+                 if app.modal.is_none()
++                    && !app.hints.is_active()
+                     && let Some(update) = pending.take()
+                 {
+                     match update {
+@@ -489,9 +515,11 @@
+                             break;
+                         }
+                     }
++                    Event::Resize(_, _) => app.hints.cancel(),
+                     Event::Mouse(m)
+                         if app.modal.is_none() || matches!(m.kind, MouseEventKind::Down(_)) =>
+                     {
++                        app.hints.cancel();
+                         match m.kind {
+                             MouseEventKind::ScrollDown => app.scroll = app.scroll.saturating_add(3),
+                             MouseEventKind::ScrollUp => app.scroll = app.scroll.saturating_sub(3),
+@@ -538,6 +566,107 @@
+             std::thread::current().id()
+         ));
+         app
++    }
++    fn draw_app(
++        app: &mut App,
++        width: u16,
++        height: u16,
++    ) -> ratatui::Terminal<ratatui::backend::TestBackend> {
++        let mut terminal =
++            ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
++        terminal.draw(|frame| ui::draw(frame, app)).unwrap();
++        terminal
++    }
++    fn hint_key(app: &mut App, action: Action) {
++        let label = app
++            .hints
++            .session()
++            .hints()
++            .iter()
++            .find(|hint| hint.target.id == action)
++            .expect("action has a visible hint")
++            .label
++            .clone();
++        for c in label.chars() {
++            assert!(!app.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)));
++        }
++    }
++    #[test]
++    fn hints_dispatch_existing_actions_without_shortcut_leakage() {
++        let mut app = app();
++        draw_app(&mut app, 150, 54);
++        app.key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
++        assert!(app.hints.is_active());
++        // Invalid q must not quit the app; j must not move the story while hinting.
++        assert!(!app.key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE)));
++        assert!(app.hints.is_active());
++        let selected = app.selected;
++        hint_key(&mut app, Action::Bookmark(0));
++        assert_eq!(app.selected, selected);
++        assert_eq!(app.saved.bookmarked, vec![app.stories[0].url.clone()]);
++        assert!(!app.hints.is_active());
++        let saved: Saved =
++            serde_json::from_slice(&std::fs::read(&app.state_path).unwrap()).unwrap();
++        assert_eq!(saved.bookmarked, app.saved.bookmarked);
++        let _ = std::fs::remove_dir_all(app.state_path.parent().unwrap());
++    }
++    #[test]
++    fn hint_dialog_scope_and_text_entry_shortcut() {
++        let mut app = app();
++        app.act(Action::Compose);
++        draw_app(&mut app, 150, 54);
++        app.key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
++        assert_eq!(app.input, "f");
++        assert!(!app.hints.is_active());
++        app.key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::ALT));
++        assert!(app.hints.is_active());
++        assert!(
++            app.hints
++                .session()
++                .hints()
++                .iter()
++                .all(|h| matches!(h.target.id, Action::Close | Action::Submit))
++        );
++        app.key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
++        assert_eq!(app.input, "f");
++        hint_key(&mut app, Action::Close);
++        assert!(app.modal.is_none());
++        assert!(!app.hints.is_active());
++        app.act(Action::More(0));
++        draw_app(&mut app, 150, 54);
++        // The More dialog's existing f binding still follows the author.
++        app.key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
++        assert!(app.saved.following.contains(&app.stories[0].handle));
++        let _ = std::fs::remove_dir_all(app.state_path.parent().unwrap());
++    }
++    #[test]
++    fn hints_cancel_on_resize_or_scroll_and_have_visible_scoped_targets() {
++        let mut app = app();
++        for (width, height) in [(150, 54), (90, 30), (44, 16)] {
++            draw_app(&mut app, width, height);
++            app.key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
++            assert!(app.hints.is_active());
++            for hint in app.hints.session().hints() {
++                assert!(hint.target.area.x < width);
++                assert!(hint.target.area.y < height);
++                assert!(hint.target.area.right() <= width);
++                assert!(hint.target.area.bottom() <= height);
++            }
++            let mut terminal = draw_app(&mut app, width, height);
++            terminal.draw(|frame| ui::draw(frame, &mut app)).unwrap();
++            assert!(
++                app.hints.is_active(),
++                "ordinary redraw must preserve the session"
++            );
++            draw_app(&mut app, width + 1, height);
++            assert!(!app.hints.is_active());
++        }
++        draw_app(&mut app, 150, 54);
++        app.key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
++        app.scroll += 4;
++        draw_app(&mut app, 150, 54);
++        assert!(!app.hints.is_active());
++        let _ = std::fs::remove_dir_all(app.state_path.parent().unwrap());
+     }
+     #[test]
+     fn navigation_filtering_and_persistence() {
+--- a/src/ui.rs
++++ b/src/ui.rs
+@@ -63,6 +63,7 @@
+             " WIRE / NEWS\n\n Enlarge the terminal to at least 44 × 16.\n Press q to quit.",
+             style(TEXT),
+         );
++        app.hints.update(vec![], area, None);
+         return;
+     }
+     let max = area.width.min(160);
+@@ -211,7 +212,7 @@
+         f,
+         rect(left + 1, area.height - 1, max.saturating_sub(2), 1),
+         format!(
+-            " {}  │  j/k navigate  l like  b save  n post  / search  q quit",
++            " {}  │  f hints  j/k navigate  l like  b save  / search  q quit",
+             app.status
+         ),
+         style(MUTED),
+@@ -221,6 +222,46 @@
+     }
+     if let Some(m) = app.modal.clone() {
+         modal(f, app, area, m);
++    }
++    // Dialog renderers clear background hit targets, so hints share mouse scope.
++    let mut targets = Vec::new();
++    for (bounds, action) in &app.hits {
++        if targets
++            .iter()
++            .any(|target: &ratahop_ratatui::Target<Action>| target.id == *action)
++        {
++            continue;
++        }
++        targets.push(ratahop_ratatui::Target::new(
++            action.clone(),
++            ratahop_ratatui::rect(*bounds),
++            hint_title(action),
++        ));
++    }
++    app.hints.update(targets, area, None);
++    f.render_widget(&app.hints, area);
++}
++fn hint_title(action: &Action) -> String {
++    match action {
++        Action::Page(page) => format!("Go to {page:?}"),
++        Action::Tab(false) => "For you".into(),
++        Action::Tab(true) => "Following".into(),
++        Action::Select(i) => format!("Select story {}", i + 1),
++        Action::Like(i) => format!("Like story {}", i + 1),
++        Action::Repost(i) => format!("Repost story {}", i + 1),
++        Action::Bookmark(i) => format!("Bookmark story {}", i + 1),
++        Action::Reply(i) => format!("Reply to story {}", i + 1),
++        Action::Open(i) => format!("Open source for story {}", i + 1),
++        Action::Share(i) => format!("Share story {}", i + 1),
++        Action::Compose => "Write a post".into(),
++        Action::Search => "Search stories".into(),
++        Action::Follow(handle) => format!("Follow @{handle}"),
++        Action::Topic(topic) => format!("Explore {topic}"),
++        Action::Help => "Keyboard shortcuts".into(),
++        Action::Close => "Close dialog".into(),
++        Action::Submit => "Publish locally".into(),
++        Action::More(i) => format!("More actions for story {}", i + 1),
++        Action::Expand(i) => format!("Expand story {}", i + 1),
+     }
+ }
+ fn sidebar(f: &mut Frame, app: &mut App, a: Rect) {
+@@ -920,11 +961,11 @@
+             );
+         }
+         Modal::Help => {
+-            let r = popup(f, area, 65, 23, "Make yourself at home");
++            let r = popup(f, area, 65, 25, "Make yourself at home");
+             put(
+                 f,
+                 rect(r.x + 3, r.y + 2, r.width - 6, r.height - 4),
+-                "NAVIGATION\n  j / k, ↑ / ↓   Next / previous story\n  PgUp / PgDn     Scroll within the feed\n  1–5             Home, Explore, Alerts, Saved, Profile\n  Tab             For you / Following\n  /               Search stories\n\nSTORY ACTIONS\n  l  Like         r  Repost       b  Bookmark\n  c  Reply        s  Share        m  More / follow\n  e  Show more    Enter  Details  o  Open source\n\n  n  New post     Esc  Close / clear search\n  q  Quit         Ctrl+C  Quit anywhere\n\nClick buttons and use your mouse wheel, too.\nAll social activity stays on this device.",
++                "NAVIGATION\n  j / k, ↑ / ↓   Next / previous story\n  PgUp / PgDn     Scroll within the feed\n  1–5             Home, Explore, Alerts, Saved, Profile\n  Tab             For you / Following\n  f               Show keyboard hints\n  Alt+f           Hints inside any dialog\n  /               Search stories\n\nSTORY ACTIONS\n  l  Like         r  Repost       b  Bookmark\n  c  Reply        s  Share        m  More / follow\n  e  Show more    Enter  Details  o  Open source\n\n  n  New post     Esc  Close / clear search\n  q  Quit         Ctrl+C  Quit anywhere\n\nClick buttons and use your mouse wheel, too.\nAll social activity stays on this device.",
+                 style(TEXT),
+             );
+             button(
+--- a/README.md
++++ b/README.md
+@@ -51,6 +51,8 @@
+ 
+ | Key | Action |
+ | --- | --- |
++| `f` | Show RataHop hints; type a label to activate a control |
++| `Alt+f` | Show hints inside dialogs, including text entry |
+ | `j` / `k`, arrows | Next / previous story |
+ | Page Up / Page Down, mouse wheel | Scroll |
+ | `Tab` | For you / Following |
+@@ -67,6 +69,8 @@
+ | `Esc` | Dismiss dialog / clear search |
+ | `?` | Keyboard shortcuts |
+ | `q`, `Ctrl+C` | Quit |
++
++Hint mode consumes keyboard input until selection or Escape. Backspace edits the hint prefix. Crowded layouts use a picker with Page Up / Page Down. Resizing or changing visible controls cancels hint mode. The local dependency expects RataHop alongside this project at `../ratahop`.
+ 
+ Buttons support mouse clicks. Hold your terminal’s selection modifier (usually Shift) to select/copy text while mouse capture is enabled. Search updates as you type; Enter returns to the results. Choose Follow from a story’s More menu or from the desktop sidebar to populate Following.
+ 
