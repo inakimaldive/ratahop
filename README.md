@@ -113,7 +113,8 @@ selection completes, and mouse input / resizing cancels hints.
 [Integration notes and patch](integrations/wire-feed/README.md) ·
 [Validation record](docs/VALIDATION.md) · [Integration guide](docs/GUIDE.md) ·
 [Compatibility policy](docs/COMPATIBILITY.md) ·
-[Development plan](docs/PLAN.md) · [Changelog](CHANGELOG.md)
+[Adapter ecosystem plan](docs/ADAPTERS.md) ·
+[Development plan](docs/PLAN.md) · [Changelog](CHANGELOG.md))
 
 ## Development
 

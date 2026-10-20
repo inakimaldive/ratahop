@@ -110,6 +110,30 @@ and 1,000 targets; publish measurements with environment details.
 Exit: external integration feedback is addressed and names are checked before
 publishing crates. Remove `publish = false` only as part of release preparation.
 
+### 4. Second adapter: Crossterm-only hosts
+
+Badge painting for hand-drawn screens via a host-supplied cell callback;
+move the framework-free Crossterm key conversion here from the Ratatui
+adapter. Extract shared overlay logic only after two implementations exist.
+See [the adapter ecosystem plan](ADAPTERS.md).
+
+Exit: a hand-drawn Crossterm application gains hint navigation without
+architectural changes, without duplicated placement logic.
+
+### 5. Cursive adapter
+
+Wrap a view so its draw renders the overlay last and its event handling
+routes active-session input first, then validate in a real Cursive app.
+See [the adapter ecosystem plan](ADAPTERS.md).
+
+Exit: the integration contract demonstrable in a Cursive application.
+
+### 6. Termion and on-demand stacks
+
+Key-event mapping only, built with a real integration in hand; decline
+legacy tui-rs in favor of migration guidance. See
+[the adapter ecosystem plan](ADAPTERS.md).
+
 ## Community decisions
 
 Use MIT OR Apache-2.0. Keep the dependency footprint small. Establish the minimum
